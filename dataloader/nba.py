@@ -10,6 +10,7 @@ ACTIVITIES = ['2p-succ.', '2p-fail.-off.', '2p-fail.-def.',
               '2p-layup-succ.', '2p-layup-fail.-off.', '2p-layup-fail.-def.',
               '3p-succ.', '3p-fail.-off.', '3p-fail.-def.']
 
+print("a")
 
 def read_ids(path):
     file = open(path)
