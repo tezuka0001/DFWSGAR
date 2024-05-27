@@ -44,4 +44,5 @@ def read_dataset(args):
 
     print("%d train samples and %d test samples" % (len(train_frames), len(test_frames)))
 
-    return train_set, test_set
+    return train_set, test_set, data_path, image_path, test_id_path, test_ids, test_frames
+

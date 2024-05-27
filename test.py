@@ -17,6 +17,9 @@ import models.models as models
 from util.utils import *
 from dataloader.dataloader import read_dataset
 
+# 進捗の可視化，tqdm
+from tqdm import tqdm
+
 parser = argparse.ArgumentParser(description='Detector-Free Weakly Supervised Group Activity Recognition')
 
 # Dataset specification
@@ -81,7 +84,7 @@ def main():
     exp_name = '[%s]_DFGAR_<%s>' % (args.dataset, time_str)
     save_path = './result/%s' % exp_name
 
-    _, test_set = read_dataset(args)
+    _, test_set, data_path, image_path, test_id_path, test_ids, test_frames = read_dataset(args)
 
     test_loader = data.DataLoader(test_set, batch_size=args.test_batch, shuffle=False, num_workers=8, pin_memory=True)
 
@@ -99,12 +102,53 @@ def main():
     # define loss function and optimizer
     checkpoint = torch.load(args.model_path)
     model.load_state_dict(checkpoint['state_dict'])
+    #breakpoint()
 
     # validate(train_loader, model)
-    acc, mean_acc, confusion = validate(test_loader, model)
+    acc, mean_acc, confusion, error, true, pred = validate(test_loader, model)
     print('Accuracy is %.2f' % acc)
     print('Mean accuracy is %.2f' % mean_acc)
     print(confusion)
+    print(error)
+    print_log(save_path, 'Accuracy is %.2f' % acc)
+    print_log(save_path, 'Mean accuracy is %.2f' % mean_acc)
+    print_log(save_path, confusion)
+    print_log(save_path, error)
+
+    # errorのリスト内の要素の値と，test_framesの値を比較して，test_framesの値を出力
+    miss_test_frames, miss_true, miss_pred = miss_classification(test_frames, error, true, pred)
+
+    if args.dataset == 'nba':   # nbaの場合
+        ACTIVITIES = ['2p-succ.', '2p-fail.-off.', '2p-fail.-def.',
+              '2p-layup-succ.', '2p-layup-fail.-off.', '2p-layup-fail.-def.',
+              '3p-succ.', '3p-fail.-off.', '3p-fail.-def.']
+        # インデックスをキーとした辞書の作成
+        activities_dict = {i: activity for i, activity in enumerate(ACTIVITIES)}
+        for i in error:
+            print(test_frames[i], activities_dict[true[i]], activities_dict[pred[i]])
+            print_log(save_path, test_frames[i], activities_dict[true[i]], activities_dict[pred[i]])
+    elif args.dataset == 'volleyball':
+        ACTIVITIES = ['r_set', 'r_spike', 'r-pass', 'r_winpoint', 'l_set', 'l-spike', 'l-pass', 'l_winpoint']
+        # インデックスをキーとした辞書の作成
+        activities_dict = {i: activity for i, activity in enumerate(ACTIVITIES)}
+        for i in error:
+            print(test_frames[i], activities_dict[true[i]], activities_dict[pred[i]])
+            print_log(save_path, test_frames[i], activities_dict[true[i]], activities_dict[pred[i]])
+    # for i in error:
+    #     print(test_frames[i], true[i], pred[i])
+    #     print_log(save_path, test_frames[i], true[i], pred[i])
+
+
+# missしたidとそのtrueとpredを出力
+def miss_classification(test_frames, error, true, pred):
+    miss_test_frames = []
+    miss_true = []
+    miss_pred = []
+    for i in error:
+        miss_test_frames.append(test_frames[i])
+        miss_true.append(true[i])
+        miss_pred.append(pred[i])
+        return miss_test_frames, miss_true, miss_pred
 
 
 @torch.no_grad()
@@ -116,30 +160,35 @@ def validate(test_loader, model):
 
     # switch to eval mode
     model.eval()
+    
+    #進捗を可視化する,tqdm
+    with tqdm(enumerate(test_loader), total = len(test_loader)) as pbar_loss:
+        for i, (images, activities) in pbar_loss:   # pbar_lossからiと(images, activities)を取り出す
+            images = images.cuda()
+            activities = activities.cuda()
 
-    for i, (images, activities) in enumerate(test_loader):
-        images = images.cuda()
-        activities = activities.cuda()
+            num_batch = images.shape[0]
+            num_frame = images.shape[1]
+            activities_in = activities[:, 0].reshape((num_batch,))  # get the first activity label 初めの活動ラベルを取得
 
-        num_batch = images.shape[0]
-        num_frame = images.shape[1]
-        activities_in = activities[:, 0].reshape((num_batch,))
+            # compute output
+            score = model(images)   # modelにimagesを入力してスコアを出力
 
-        # compute output
-        score = model(images)
+            true = true + activities_in.tolist()    # activities_inをリストに変換してtrueに追加
+            pred = pred + torch.argmax(score, dim=1).tolist()   # scoreの最大値のインデックスを取得してリストに変換してpredに追加
 
-        true = true + activities_in.tolist()
-        pred = pred + torch.argmax(score, dim=1).tolist()
-
-        # measure accuracy and record loss
-        group_acc = accuracy(score, activities_in)
-        accuracies.update(group_acc, num_batch)
+            # measure accuracy and record loss
+            group_acc = accuracy(score, activities_in)
+            accuracies.update(group_acc, num_batch)
 
     acc = accuracies.avg * 100.0
     confusion = confusion_matrix(true, pred)
     mean_acc = np.mean([confusion[i, i] / confusion[i, :].sum() for i in range(confusion.shape[0])]) * 100.0
 
-    return acc, mean_acc, confusion
+    # true[i]とpred[i]が一致していない場合，それを出力
+    error = error_index(true, pred)
+
+    return acc, mean_acc, confusion, error, true, pred
 
 
 class AverageMeter(object):
@@ -177,6 +226,15 @@ def accuracy(output, target):
     output = torch.argmax(output, dim=1)
     correct = torch.sum(torch.eq(target.int(), output.int())).float()
     return correct.item() / output.shape[0]
+
+
+# true[i]とpred[i]が一致していない場合，そのiを保持する
+def error_index(true, pred):
+    error = []
+    for i in range(len(true)):
+        if true[i] != pred[i]:
+            error.append(i)
+    return error
 
 
 if __name__ == '__main__':
