@@ -1,0 +1,6 @@
+# weight
+*.pth
+# resulus
+/result/
+# dataset
+/Dataset/
