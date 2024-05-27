@@ -8,6 +8,15 @@ TEST_SEQS_VOLLEY = [4, 5, 9, 11, 14, 20, 21, 25, 29, 34, 35, 37, 43, 44, 45, 47]
 
 
 def read_dataset(args):
+    # returnにdata_path,image_path,test_id_path,test_ids,test_framesを加えたので初期化するようにする
+    train_set = None
+    test_set = None
+    data_path = None
+    image_path = None
+    test_id_path = None
+    test_ids = None
+    test_frames = None
+    
     if args.dataset == 'volleyball':
         data_path = args.data_path + args.dataset
         image_path = data_path + "/videos"
