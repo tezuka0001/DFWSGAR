@@ -4,3 +4,5 @@
 /result/
 # dataset
 /Dataset/
+# pycache
+**/__pycache__/**
