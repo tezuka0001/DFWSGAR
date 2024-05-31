@@ -89,9 +89,11 @@ class NBADataset(data.Dataset):
         vid, sid = frame
 
         if self.is_training:
-            if self.random_sampling:
+            if self.random_sampling == 'random_samp':
                 sample_frames = random.sample(range(72), self.num_frame)
                 sample_frames.sort()
+            elif self.random_sampling == 'full_frames': # full framesで訓練させる
+                sample_frames = list(range(72))
             else:
                 segment_duration = self.num_total_frame // self.num_frame
                 sample_frames = np.multiply(list(range(self.num_frame)), segment_duration) + np.random.randint(
@@ -106,6 +108,8 @@ class NBADataset(data.Dataset):
             elif self.num_frame == 18:
                 # [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 66, 70]
                 sample_frames = list(range(2, 72, 4))
+            elif self.num_frame == 72: # test時で全フレームを使う場合
+                sample_frames = list(range(72))
             else:
                 segment_duration = self.num_total_frame // self.num_frame
                 sample_frames = np.multiply(list(range(self.num_frame)), segment_duration) + segment_duration // 2

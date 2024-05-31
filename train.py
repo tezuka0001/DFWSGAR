@@ -17,6 +17,9 @@ import models.models as models
 from util.utils import *
 from dataloader.dataloader import read_dataset
 
+# 進捗の可視化，tqdm
+from tqdm import tqdm
+
 parser = argparse.ArgumentParser(description='Detector-Free Weakly Supervised Group Activity Recognition')
 
 # Dataset specification
@@ -24,7 +27,9 @@ parser.add_argument('--dataset', default='nba', type=str, help='volleyball or nb
 parser.add_argument('--data_path', default='./Dataset/', type=str, help='data path')
 parser.add_argument('--image_width', default=1280, type=int, help='Image width to resize')
 parser.add_argument('--image_height', default=720, type=int, help='Image height to resize')
-parser.add_argument('--random_sampling', action='store_true', help='random sampling strategy')
+# parser.add_argument('--random_sampling', action='store_true', help='random sampling strategy')
+# sampling方法を変える
+parser.add_argument('--random_sampling', default='random_samp', help='random sampling strategy, if you want to use full frames, please set full_frames')
 parser.add_argument('--num_frame', default=18, type=int, help='number of frames for each clip')
 parser.add_argument('--num_total_frame', default=72, type=int, help='number of total frames for each clip')
 parser.add_argument('--num_activities', default=6, type=int, help='number of activity classes in volleyball dataset')
@@ -101,7 +106,7 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    train_set, test_set = read_dataset(args)
+    train_set, test_set, _, _, _, _, _= read_dataset(args)
 
     train_loader = data.DataLoader(train_set, batch_size=args.batch, shuffle=True, num_workers=8, pin_memory=True)
     test_loader = data.DataLoader(test_set, batch_size=args.test_batch, shuffle=False, num_workers=8, pin_memory=True)
@@ -135,8 +140,11 @@ def main():
     else:
         start_epoch = 1
 
-    # training phase
-    for epoch in range(start_epoch, args.epochs + 1):
+    # debug
+    #breakpoint()
+
+    # training phase,可視化
+    for epoch in tqdm(range(start_epoch, args.epochs + 1)):
         print_log(save_path, '----- %s at epoch #%d' % ("Train", epoch))
         train_log = train(train_loader, model, criterion, optimizer, epoch)
         print_log(save_path, 'Accuracy: %.2f%%, Loss: %.4f, Using %.1f seconds' %
@@ -175,32 +183,34 @@ def train(train_loader, model, criterion, optimizer, epoch):
     # switch to train mode
     model.train()
 
-    for i, (images, activities) in enumerate(train_loader):
-        images = images.cuda()                                      # [B, T, 3, H, W]
-        activities = activities.cuda()                              # [B, T]
+    # 進捗を可視化する，tqdm
+    with tqdm(enumerate(train_loader), total=len(train_loader)) as pbar_loss:
+        for i, (images, activities) in pbar_loss:
+            images = images.cuda()                                      # [B, T, 3, H, W]
+            activities = activities.cuda()                              # [B, T]
 
-        num_batch = images.shape[0]
-        num_frame = images.shape[1]
+            num_batch = images.shape[0]
+            num_frame = images.shape[1]
 
-        activities_in = activities[:, 0].reshape((num_batch, ))
+            activities_in = activities[:, 0].reshape((num_batch, ))
 
-        # compute output
-        score = model(images)                                       # [B, C]
+            # compute output
+            score = model(images)                                       # [B, C]
 
-        # calculate loss
-        loss = criterion(score, activities_in)
+            # calculate loss
+            loss = criterion(score, activities_in)
 
-        # measure accuracy and record loss
-        group_acc = accuracy(score, activities_in)
-        losses.update(loss, num_batch)
-        accuracies.update(group_acc, num_batch)
+            # measure accuracy and record loss
+            group_acc = accuracy(score, activities_in)
+            losses.update(loss, num_batch)
+            accuracies.update(group_acc, num_batch)
 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        if args.gradient_clipping:
-            nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-        optimizer.step()
+            # compute gradient and do SGD step
+            optimizer.zero_grad()
+            loss.backward()
+            if args.gradient_clipping:
+                nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
+            optimizer.step()
 
     train_log = {
         'epoch': epoch,
@@ -224,27 +234,29 @@ def validate(test_loader, model, criterion, epoch):
     # switch to eval mode
     model.eval()
 
-    for i, (images, activities) in enumerate(test_loader):
-        images = images.cuda()
-        activities = activities.cuda()
+    #進捗を可視化する,tqdm
+    with tqdm(enumerate(test_loader), total = len(test_loader)) as pbar_loss:
+        for i, (images, activities) in pbar_loss:
+            images = images.cuda()
+            activities = activities.cuda()
 
-        num_batch = images.shape[0]
-        num_frame = images.shape[1]
-        activities_in = activities[:, 0].reshape((num_batch,))
+            num_batch = images.shape[0]
+            num_frame = images.shape[1]
+            activities_in = activities[:, 0].reshape((num_batch,))
 
-        # compute output
-        score = model(images)
+            # compute output
+            score = model(images)
 
-        true = true + activities_in.tolist()
-        pred = pred + torch.argmax(score, dim=1).tolist()
+            true = true + activities_in.tolist()
+            pred = pred + torch.argmax(score, dim=1).tolist()
 
-        # calculate loss
-        loss = criterion(score, activities_in)
+            # calculate loss
+            loss = criterion(score, activities_in)
 
-        # measure accuracy and record loss
-        group_acc = accuracy(score, activities_in)
-        losses.update(loss, num_batch)
-        accuracies.update(group_acc, num_batch)
+            # measure accuracy and record loss
+            group_acc = accuracy(score, activities_in)
+            losses.update(loss, num_batch)
+            accuracies.update(group_acc, num_batch)
 
     acc = accuracies.avg * 100.0
     confusion = confusion_matrix(true, pred)
