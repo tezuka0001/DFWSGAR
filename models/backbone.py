@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
+#動かすためにここ消した
 from spatial_correlation_sampler import SpatialCorrelationSampler
 
 from .position_encoding import build_position_encoding

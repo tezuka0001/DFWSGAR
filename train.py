@@ -28,7 +28,7 @@ parser.add_argument('--data_path', default='./Dataset/', type=str, help='data pa
 parser.add_argument('--image_width', default=1280, type=int, help='Image width to resize')
 parser.add_argument('--image_height', default=720, type=int, help='Image height to resize')
 # parser.add_argument('--random_sampling', action='store_true', help='random sampling strategy')
-# sampling方法を変える
+# sampling方法を変える,ここでrandom_samplingをfuru_framesに変更すると学習時に全フレームを使う
 parser.add_argument('--random_sampling', default='random_samp', help='random sampling strategy, if you want to use full frames, please set full_frames')
 parser.add_argument('--num_frame', default=18, type=int, help='number of frames for each clip')
 parser.add_argument('--num_total_frame', default=72, type=int, help='number of total frames for each clip')
